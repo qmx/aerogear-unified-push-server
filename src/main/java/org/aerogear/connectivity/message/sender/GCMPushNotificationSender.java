@@ -56,7 +56,11 @@ public class GCMPushNotificationSender {
         // iterate over the missing keys:
         Set<String> keys = pushMessage.getData().keySet();
         for (String key : keys) {
-            gcmBuilder.addData(key, (String) pushMessage.getData().get(key));
+            // we do not really care on simple push here.... 
+            // FIX ME:
+            if (! "simple-push".equals(key)) {
+                gcmBuilder.addData(key, ""+pushMessage.getData().get(key));
+            }
         }
 
         Message gcmMessage = gcmBuilder.build();
