@@ -1,4 +1,4 @@
-/*! AeroGear JavaScript Library - v1.0.0 - 2013-05-16
+/*! AeroGear JavaScript Library - v1.0.1 - 2013-06-27
 * https://github.com/aerogear/aerogear-js
 * JBoss, Home of Professional Open Source
 * Copyright Red Hat, Inc., and individual contributors
@@ -398,6 +398,121 @@ AeroGear.isArray = function( obj ) {
   }
 }());
 
+;(function () {
+
+  var
+    object = typeof window != 'undefined' ? window : exports,
+    chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=',
+    INVALID_CHARACTER_ERR = (function () {
+      // fabricate a suitable error object
+      try { document.createElement('$'); }
+      catch (error) { return error; }}());
+
+  // encoder
+  // [https://gist.github.com/999166] by [https://github.com/nignag]
+  object.btoa || (
+  object.btoa = function (input) {
+    for (
+      // initialize result and counter
+      var block, charCode, idx = 0, map = chars, output = '';
+      // if the next input index does not exist:
+      //   change the mapping table to "="
+      //   check if d has no fractional digits
+      input.charAt(idx | 0) || (map = '=', idx % 1);
+      // "8 - idx % 1 * 8" generates the sequence 2, 4, 6, 8
+      output += map.charAt(63 & block >> 8 - idx % 1 * 8)
+    ) {
+      charCode = input.charCodeAt(idx += 3/4);
+      if (charCode > 0xFF) throw INVALID_CHARACTER_ERR;
+      block = block << 8 | charCode;
+    }
+    return output;
+  });
+
+  // decoder
+  // [https://gist.github.com/1020396] by [https://github.com/atk]
+  object.atob || (
+  object.atob = function (input) {
+    input = input.replace(/=+$/, '')
+    if (input.length % 4 == 1) throw INVALID_CHARACTER_ERR;
+    for (
+      // initialize result and counters
+      var bc = 0, bs, buffer, idx = 0, output = '';
+      // get next character
+      buffer = input.charAt(idx++);
+      // character found in table? initialize bit storage and add its ascii value;
+      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
+        // and if not first of each 4 characters,
+        // convert the first 8 bits to one ascii character
+        bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
+    ) {
+      // try to find character in table (0-63, not found => -1)
+      buffer = chars.indexOf(buffer);
+    }
+    return output;
+  });
+
+}());
+
+(function( AeroGear, $, undefined ) {
+    /**
+        DESCRIPTION
+        @constructs AeroGear.UnifiedPushClient
+        @param {String} variantID - the id representing the mobile application variant
+        @param {String} variantSecret - the secret for the mobile application variant
+        @param {String} [pushServerURL="http://" + window.location.hostname + ":8080/ag-push/rest/registry/device"] - location of the unified push server
+        @returns {Object} The created unified push server client
+     */
+    AeroGear.UnifiedPushClient = function( variantID, variantSecret, pushServerURL ) {
+        // Allow instantiation without using new
+        if ( !( this instanceof AeroGear.UnifiedPushClient ) ) {
+            return new AeroGear.UnifiedPushClient( variantID, variantSecret, pushServerURL );
+        }
+
+        this.registerWithPushServer = function( messageType, endpoint, alias ) {
+            var RegistrationError,
+                url = pushServerURL || "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device";
+
+            if ( messageType !== "broadcast" && !alias ) {
+                throw "UnifiedPushRegistrationException";
+            }
+
+            $.ajax({
+                contentType: "application/json",
+                dataType: "json",
+                type: "POST",
+				crossDomain: true,
+                url: url,
+                headers: {
+                    "Authorization": "Basic " + window.btoa(variantID + ":" + variantSecret)
+                },
+                data: JSON.stringify({
+                    category: messageType,
+                    deviceToken: endpoint.channelID,
+                    alias: alias
+                })
+            });
+        };
+
+        this.unregisterWithPushServer = function( endpoint ) {
+            var url = pushServerURL || "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device";
+            $.ajax({
+                contentType: "application/json",
+                dataType: "json",
+                type: "DELETE",
+                url: url + "/" + endpoint.channelID,
+                headers: {
+                    "ag-mobile-variant": variantID
+                },
+                data: JSON.stringify({
+                    deviceToken: endpoint.channelID
+                })
+            });
+        };
+    };
+
+})( AeroGear, jQuery );
+
 (function( AeroGear, undefined ) {
     /**
         The AeroGear.Notifier namespace provides a messaging API. Through the use of adapters, this library provides common methods like connect, disconnect, subscribe, unsubscribe and publish.
@@ -458,7 +573,7 @@ AeroGear.isArray = function( obj ) {
     AeroGear.Notifier.DISCONNECTED = 3;
 })( AeroGear );
 
-(function( AeroGear, $, uuid, undefined ) {
+(function( AeroGear, $, SockJS, uuid, undefined ) {
     /**
         DESCRIPTION
         @constructs AeroGear.Notifier.adapters.SimplePush
@@ -583,11 +698,12 @@ AeroGear.isArray = function( obj ) {
                     }
                 }));
             } else if ( message.messageType === "register" ) {
-                // TODO: handle registration errors
+                throw "SimplePushRegistrationError";
             } else if ( message.messageType === "unregister" && message.status === 200 ) {
-                this.removeChannel( channels[ this.getChannelIndex( message.channelID ) ] );
+                pushStore.channels.splice( findChannelIndex( pushStore.channels, "channelID", message.channelID ), 1 );
+                this.setPushStore( pushStore );
             } else if ( message.messageType === "unregister" ) {
-                // TODO: handle unregistration errors
+                throw "SimplePushUnregistrationError";
             } else if ( message.messageType === "notification" ) {
                 updates = message.updates;
                 for ( var i = 0, updateLength = updates.length; i < updateLength; i++ ) {
@@ -638,13 +754,8 @@ AeroGear.isArray = function( obj ) {
 
      */
     AeroGear.Notifier.adapters.SimplePush.prototype.connect = function( options ) {
-        // All WS stuff will be replaced by SockJS eventually
-        if ( !window.WebSocket ) {
-            window.WebSocket = window.MozWebSocket;
-        }
-
         var that = this,
-            client = new WebSocket( options.url || this.getConnectURL() );
+            client = new SockJS( options.url || this.getConnectURL() );
 
         client.onopen = function() {
             // Immediately send hello message
@@ -725,14 +836,14 @@ AeroGear.isArray = function( obj ) {
         pushStore.channels = pushStore.channels || [];
 
         for ( var i = 0; i < channels.length; i++ ) {
-            if ( client.readyState === WebSocket.OPEN ) {
+            if ( client.readyState === SockJS.OPEN ) {
                 channelID = uuid();
                 bindSubscribeSuccess( channelID, channels[ i ].requestObject );
                 client.send( '{"messageType": "register", "channelID": "' + channels[ i ].channelID + '"}');
             } else {
                 // check for previously registered channels
                 if ( pushStore.channels.length ) {
-                    index = findAvailableChannelIndex( pushStore.channels );
+                    index = findChannelIndex( pushStore.channels, "state", "available" );
                     if ( index !== undefined ) {
                         bindSubscribeSuccess( pushStore.channels[ index ].channelID, channels[ i ].requestObject );
                         channels[ i ].channelID = pushStore.channels[ index ].channelID;
@@ -774,9 +885,9 @@ AeroGear.isArray = function( obj ) {
     };
 
     // Utility Functions
-    function findAvailableChannelIndex( channels ) {
+    function findChannelIndex( channels, filterField, filterValue ) {
         for ( var i = 0; i < channels.length; i++ ) {
-            if ( channels[ i ].state === "available" ) {
+            if ( channels[ i ][ filterField ] === filterValue ) {
                 return i;
             }
         }
@@ -800,12 +911,13 @@ AeroGear.isArray = function( obj ) {
         });
     }
 
-})( AeroGear, jQuery, uuid );
+})( AeroGear, jQuery, SockJS, uuid );
 
 (function( AeroGear, $, undefined ) {
     var simpleNotifier, nativePush;
     // Use browser push implementation when available
     // TODO: Test for browser-prefixed implementations
+    // TODO: Actually use the native version when present
     if ( navigator.push ) {
         nativePush = navigator.push;
     }
@@ -813,58 +925,18 @@ AeroGear.isArray = function( obj ) {
     // SimplePush Default Config
     AeroGear.SimplePush = window.AeroGearSimplePush;
     AeroGear.SimplePush.variantID = window.AeroGearSimplePush.variantID || "";
-    AeroGear.SimplePush.pushNetworkURL = window.AeroGearSimplePush.pushNetworkURL || "ws://" + window.location.hostname + ":7777/simplepush";
-    AeroGear.SimplePush.pushServerURL = window.AeroGearSimplePush.pushServerURL || "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device";
+    AeroGear.SimplePush.simplePushServerURL = window.AeroGearSimplePush.simplePushServerURL || "http://" + window.location.hostname + ":7777/simplepush";
+    AeroGear.SimplePush.unifiedPushServerURL = window.AeroGearSimplePush.unifiedPushServerURL || "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device";
 
     // Add push to the navigator object
     navigator.push = (function() {
         return {
             register: nativePush ? nativePush.register : function() {
-                var request = {};
+                var request = AeroGear.UnifiedPushClient( AeroGear.SimplePush.variantID, AeroGear.SimplePush.unifiedPushServerURL );
 
                 if ( !simpleNotifier ) {
                     throw "SimplePushConnectionError";
                 }
-
-                // Provide methods to inform push server
-                request.registerWithPushServer = function( messageType, endpoint ) {
-                    var type = "POST",
-                        url = AeroGear.SimplePush.pushServerURL;
-
-//                    if ( endpoint.registered ) {
-//                        type = "PUT";
-//                        url += "/" + endpoint.channelID;
-//                    }
-
-                    $.ajax({
-                        contentType: "application/json",
-                        dataType: "json",
-                        type: type,
-                        url: url,
-                        headers: {
-                            "ag-mobile-variant": AeroGear.SimplePush.variantID
-                        },
-                        data: JSON.stringify({
-                            category: messageType,
-                            deviceToken: endpoint.channelID
-                        })
-                    });
-                };
-
-                request.unregisterWithPushServer = function( endpoint ) {
-                    $.ajax({
-                        contentType: "application/json",
-                        dataType: "json",
-                        type: "DELETE",
-                        url: AeroGear.SimplePush.pushServerURL + "/" + endpoint.channelID,
-                        headers: {
-                            "ag-mobile-variant": AeroGear.SimplePush.variantID
-                        },
-                        data: JSON.stringify({
-                            deviceToken: endpoint.channelID
-                        })
-                    });
-                };
 
                 simpleNotifier.subscribe({
                     requestObject: request,
@@ -906,7 +978,7 @@ AeroGear.isArray = function( obj ) {
         name: "agPushNetwork",
         type: "SimplePush",
         settings: {
-            connectURL: AeroGear.SimplePush.pushNetworkURL
+            connectURL: AeroGear.SimplePush.simplePushServerURL
         }
     }).clients.agPushNetwork;
 
