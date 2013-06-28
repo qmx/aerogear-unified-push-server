@@ -1,8 +1,7 @@
 (function() {
     var mailEndpoint, mailRequest, fooEndpoint, fooRequest, broadcastRequest, broadcastEndpoint, testFrame,
-        unifiedPushURL = "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device",
         // Obviously this isn't secure but what we have for now
-        UPClient = AeroGear.UnifiedPushClient( AeroGear.SimplePush.variantID, "0137ba82-6f84-4d7c-904a-ae9d9dcf2d50", AeroGear.SimplePush.unifiedPushServerURL );
+        UPClient = AeroGear.UnifiedPushClient( AeroGear.SimplePush.variantID, "5143246f-e2b7-4d69-90c3-08cfe8e513c4", "http://pusheedemo-aerogearkb.rhcloud.com/ag-push/rest/registry/device" );
 
     getTextAreaElement().value = "Web Socket opened!";
 
@@ -18,7 +17,7 @@
     mailRequest = navigator.push.register();
     mailRequest.onsuccess = function( event ) {
         mailEndpoint = event.target.result;
-        UPClient.registerWithPushServer( "mail", mailEndpoint );
+        UPClient.registerWithPushServer( "mail", mailEndpoint, "test@test.com" );
         $("#mailVersion").attr("name", mailEndpoint.channelID);
         appendTextArea("Subscribed to Mail messages on " + mailEndpoint.channelID);
         $("#mailVersion").val( localStorage.getItem( mailEndpoint.channelID ) || 1 );
@@ -28,7 +27,7 @@
     fooRequest = navigator.push.register();
     fooRequest.onsuccess = function( event ) {
         fooEndpoint = event.target.result;
-        UPClient.registerWithPushServer( "foo", fooEndpoint );
+        UPClient.registerWithPushServer( "foo", fooEndpoint, "test@test.com" );
         $("#fooVersion").attr("name", fooEndpoint.channelID);
         appendTextArea("Subscribed to Foo messages on " + fooEndpoint.channelID);
         $("#fooVersion").val( localStorage.getItem( fooEndpoint.channelID ) || 1 );
@@ -83,6 +82,7 @@
 
             urlSwitch = "selected",
             data = {
+                alias: ["test@test.com"],
                 message: {
                     "simple-push": simplePushVal
                 }
@@ -90,10 +90,13 @@
         }
 
         $.ajax({
-            url: "http://" + window.location.hostname + ":8080/ag-push/rest/sender/" + urlSwitch + "/" + AeroGear.SimplePush.pushAppID,
+            url: "http://" + window.location.hostname + "/ag-push/rest/sender/" + urlSwitch,
             contentType: "application/json",
             dataType: "json",
             type: "POST",
+            headers: {
+                "Authorization": "Basic " + window.btoa("a63ce828-e83e-4959-abe6-ce3348df00b7:2129bee8-b363-4e03-a1e0-179a43806908")
+            },
             data: JSON.stringify( data ),
             complete: function() {
                 $this.prop("disabled", false);

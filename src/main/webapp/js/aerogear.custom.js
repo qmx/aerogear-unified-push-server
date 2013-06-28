@@ -1,4 +1,4 @@
-/*! AeroGear JavaScript Library - v1.2.0-dev - 2013-06-27
+/*! AeroGear JavaScript Library - v1.2.0-dev - 2013-06-28
 * https://github.com/aerogear/aerogear-js
 * JBoss, Home of Professional Open Source
 * Copyright Red Hat, Inc., and individual contributors
@@ -958,12 +958,16 @@ AeroGear.isArray = function( obj ) {
     navigator.push = (function() {
         return {
             register: nativePush ? nativePush.register : function() {
+                var request = {
+                    onsuccess: function( event ) {}
+                };
+
                 if ( !simpleNotifier ) {
                     throw "SimplePushConnectionError";
                 }
 
                 simpleNotifier.subscribe({
-                    requestObject: {},
+                    requestObject: request,
                     callback: function( message ) {
                         $( navigator.push ).trigger({
                             type: "push",
@@ -972,7 +976,7 @@ AeroGear.isArray = function( obj ) {
                     }
                 });
 
-                return {};
+                return request;
             },
 
             unregister: nativePush ? nativePush.unregister : function( endpoint ) {
