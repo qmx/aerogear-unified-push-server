@@ -1,4 +1,4 @@
-/*! AeroGear JavaScript Library - v1.0.1 - 2013-06-27
+/*! AeroGear JavaScript Library - v1.2.0-dev - 2013-06-27
 * https://github.com/aerogear/aerogear-js
 * JBoss, Home of Professional Open Source
 * Copyright Red Hat, Inc., and individual contributors
@@ -532,6 +532,34 @@ AeroGear.isArray = function( obj ) {
 
         // Create multiple clients using the default adapter
         var notifier3 = AeroGear.Notifier( [ "someNotifier", "anotherNotifier" ] );
+
+        // Create a default adapter with settings
+        var notifier4 = AeroGear.Notifier({
+            name: "vertxNotifier",
+            type: "vertx",
+            settings: { ... }
+        });
+
+        // Create a stompws adapter with settings
+        var notifier5 = AeroGear.Notifier({
+            name: "STOMPNotifier",
+            type: "stompws",
+            settings: { ... }
+        });
+
+        // Create a vertx and stompws adapter with settings
+        var notifier6 = AeroGear.Notifier([
+            {
+                name: "vertxNotifier",
+                type: "vertx",
+                settings: { ... }
+            },
+            {
+                name: "STOMPNotifier",
+                type: "stompws",
+                settings: { ... }
+            }
+        ]);
      */
     AeroGear.Notifier = function( config ) {
         // Allow instantiation without using new
@@ -924,22 +952,18 @@ AeroGear.isArray = function( obj ) {
 
     // SimplePush Default Config
     AeroGear.SimplePush = window.AeroGearSimplePush;
-    AeroGear.SimplePush.variantID = window.AeroGearSimplePush.variantID || "";
     AeroGear.SimplePush.simplePushServerURL = window.AeroGearSimplePush.simplePushServerURL || "http://" + window.location.hostname + ":7777/simplepush";
-    AeroGear.SimplePush.unifiedPushServerURL = window.AeroGearSimplePush.unifiedPushServerURL || "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device";
 
     // Add push to the navigator object
     navigator.push = (function() {
         return {
             register: nativePush ? nativePush.register : function() {
-                var request = AeroGear.UnifiedPushClient( AeroGear.SimplePush.variantID, AeroGear.SimplePush.unifiedPushServerURL );
-
                 if ( !simpleNotifier ) {
                     throw "SimplePushConnectionError";
                 }
 
                 simpleNotifier.subscribe({
-                    requestObject: request,
+                    requestObject: {},
                     callback: function( message ) {
                         $( navigator.push ).trigger({
                             type: "push",
@@ -948,7 +972,7 @@ AeroGear.isArray = function( obj ) {
                     }
                 });
 
-                return request;
+                return {};
             },
 
             unregister: nativePush ? nativePush.unregister : function( endpoint ) {
