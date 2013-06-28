@@ -1,12 +1,15 @@
 (function() {
-    var mailEndpoint, mailRequest, fooEndpoint, fooRequest, broadcastRequest, broadcastEndpoint, testFrame;
+    var mailEndpoint, mailRequest, fooEndpoint, fooRequest, broadcastRequest, broadcastEndpoint, testFrame,
+        unifiedPushURL = "http://" + window.location.hostname + ":8080/ag-push/rest/registry/device",
+        // Obviously this isn't secure but what we have for now
+        UPClient = AeroGear.UnifiedPushClient( AeroGear.SimplePush.variantID, "0137ba82-6f84-4d7c-904a-ae9d9dcf2d50", AeroGear.SimplePush.unifiedPushServerURL );
 
     getTextAreaElement().value = "Web Socket opened!";
 
     broadcastRequest = navigator.push.register();
     broadcastRequest.onsuccess = function( event ) {
         broadcastEndpoint = event.target.result;
-        broadcastRequest.registerWithPushServer( "broadcast", broadcastEndpoint );
+        UPClient.registerWithPushServer( "broadcast", broadcastEndpoint );
         appendTextArea("Subscribed to Broadcast messages on " + broadcastEndpoint.channelID);
         $("#broadcastVersion").val( localStorage.getItem( broadcastEndpoint.channelID ) || 1 );
         $("#broadcast").prop("disabled", false);
@@ -15,7 +18,7 @@
     mailRequest = navigator.push.register();
     mailRequest.onsuccess = function( event ) {
         mailEndpoint = event.target.result;
-        mailRequest.registerWithPushServer( "mail", mailEndpoint );
+        UPClient.registerWithPushServer( "mail", mailEndpoint );
         $("#mailVersion").attr("name", mailEndpoint.channelID);
         appendTextArea("Subscribed to Mail messages on " + mailEndpoint.channelID);
         $("#mailVersion").val( localStorage.getItem( mailEndpoint.channelID ) || 1 );
@@ -25,7 +28,7 @@
     fooRequest = navigator.push.register();
     fooRequest.onsuccess = function( event ) {
         fooEndpoint = event.target.result;
-        fooRequest.registerWithPushServer( "foo", fooEndpoint );
+        UPClient.registerWithPushServer( "foo", fooEndpoint );
         $("#fooVersion").attr("name", fooEndpoint.channelID);
         appendTextArea("Subscribed to Foo messages on " + fooEndpoint.channelID);
         $("#fooVersion").val( localStorage.getItem( fooEndpoint.channelID ) || 1 );
@@ -71,12 +74,12 @@
         if ( type === "broadcast" ) {
             urlSwitch = "broadcast";
             data = {
-            	"simple-push": "version="+val
+                "simple-push": "version=" + val
             };
         } else {
-        	// UGLY HACK
-        	simplePushVal = {};
-        	simplePushVal[type] = "version="+val;
+            // UGLY HACK
+            simplePushVal = {};
+            simplePushVal[type] = "version=" + val;
 
             urlSwitch = "selected",
             data = {
